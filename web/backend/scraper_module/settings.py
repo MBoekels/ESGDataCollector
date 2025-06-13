@@ -1,7 +1,7 @@
 BOT_NAME = 'scraper_module'
 
-SPIDER_MODULES    = ['backend.scraper_module.spiders']  
-NEWSPIDER_MODULE = 'backend.scraper_module.spiders'
+SPIDER_MODULES    = ['backend.scraper_module.spiders']
+NEWSPIDER_MODULE  = 'backend.scraper_module.spiders'
 
 DOWNLOADER_MIDDLEWARES = {
     'backend.scraper_module.middlewares.DynamicDelayRetryMiddleware': 543,
@@ -9,4 +9,4 @@ DOWNLOADER_MIDDLEWARES = {
 }
 
 RETRY_ENABLED = True
-RETRY_TIMES = 5
+RETRY_TIMES   = 5
