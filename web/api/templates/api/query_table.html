@@ -1,0 +1,46 @@
+<table class="table table-bordered" id="query-table">
+  <thead>
+    <tr>
+      <th class="text-center"><input type="checkbox" id="select_all_queries" {% if all_queries_active %}checked{% endif %}></th>
+      <th>Name</th>
+      <th>Beschreibung</th>
+      <th>Frage</th>
+      <th>Zuletzt bearbeitet</th>
+      <th>Aktionen</th>
+    </tr>
+    <tr>
+      <th></th>
+      <th><input type="text" class="form-control query-filter" placeholder="Filter Name"></th>
+      <th><input type="text" class="form-control query-filter" placeholder="Filter Beschreibung"></th>
+      <th><input type="text" class="form-control query-filter" placeholder="Filter Frage"></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for query in queries %}
+      <tr>
+        <td class="text-center">
+          <input type="checkbox"
+                 class="toggle-query-active"
+                 name="query_ids"
+                 data-query-id="{{ query.id }}"
+                 {% if query.active %}checked{% endif %}>
+        </td>
+        <td>{{ query.name }}</td>
+        <td>{{ query.description }}</td>
+        <td>{{ query.question }}</td>
+        <td>{{ query.last_edited|date:"d.m.Y H:i" }}</td>
+        <td>
+          <a href="#"
+             class="btn btn-sm btn-outline-secondary"
+             data-bs-toggle="modal"
+             data-bs-target="#queryModal"
+             data-url="{% url 'query_edit' query.pk %}">
+             Bearbeiten
+          </a>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>

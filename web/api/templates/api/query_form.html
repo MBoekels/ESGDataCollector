@@ -1,0 +1,57 @@
+{% load widget_tweaks %}
+
+<form id="queryForm" method="post" action="{{ form_action }}">
+  {% csrf_token %}
+
+  <div class="modal-header">
+    <h5 class="modal-title">
+      {% if instance %}Query bearbeiten{% else %}Neue Query{% endif %}
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  </div>
+
+  <div class="modal-body">
+    {% for field in form %}
+      <div class="mb-3">
+        <label class="form-label">{{ field.label }}</label>
+        {{ field|add_class:"form-control" }}
+        {% if field.errors %}
+          <div class="text-danger">{{ field.errors }}</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+    <button type="submit" class="btn btn-primary">Speichern</button>
+  </div>
+</form>
+
+<script>
+function initQueryForm() {
+  const form = document.getElementById('queryForm');
+  form.addEventListener('submit', function(event) {
+    event.preventDefault();
+    const formData = new FormData(form);
+    const url = form.getAttribute('action');
+
+    fetch(url, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: formData,
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        const bootstrapModal = bootstrap.Modal.getInstance(document.getElementById('queryModal'));
+        bootstrapModal.hide();
+        location.reload(); // oder: Tabelle dynamisch ersetzen
+      } else {
+        document.getElementById('queryModalContent').innerHTML = data.html;
+        initQueryForm(); // neu initialisieren
+      }
+    });
+  });
+}
+</script>

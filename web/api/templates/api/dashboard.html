@@ -1,0 +1,495 @@
+
+{% extends 'api/base.html' %}
+
+{% block content %}
+<h2>Dashboard</h2>
+
+<h3>Companies</h3>
+
+
+<!-- Modal-Fenster -->
+<div class="modal fade" id="companyModal" tabindex="-1" aria-labelledby="companyModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content" id="companyModalContent">
+      <div class="modal-body p-4 text-center text-muted">
+        <div class="spinner-border" role="status"></div>
+        <p class="mt-3">Lade Formular …</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  {% load tz %}
+
+  <!-- Button-Leiste -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <!-- Links: Neues Unternehmen -->
+    <button type="button" class="btn btn-primary"
+            data-bs-toggle="modal" 
+            data-bs-target="#companyModal"
+            data-url="{% url 'company_create' %}">
+        Neues Unternehmen
+    </button>
+
+    <!-- Rechts: Scrape & Reevaluate -->
+    <div class="d-flex gap-2">
+      <button type="button" id="scrape-btn" name="action" value="scrape" class="btn btn-info"
+        {% if scraping_running %}disabled{% endif %} 
+        class="btn btn-info">
+        {% if scraping_running %}Scraping läuft…{% else %}Scrape{% endif %}
+      </button>
+
+      <button type="button" id="reevaluate-btn" name="action" value="reevaluate" class="btn btn-warning">Reevaluate</button>
+    </div>
+  </div>
+
+
+  <table class="table table-bordered" id="company-table">
+    <thead>
+      <tr>
+        <th class="text-center"><input type="checkbox" id="select_all_companies" {% if all_companies_active %}checked{% endif %}></th>
+        <th>Name</th>
+        <th>Sektor</th>
+        <th>PDFs</th>
+        <th>Scraped</th>
+        <th>Evaluated</th>
+        <th>Aktionen</th>
+      </tr>
+      <tr>
+        <!-- Leere Filterzeile -->
+        <th></th>
+        <th><input type="text" class="form-control filter-input" placeholder="Filter Name"></th>
+        <th><input type="text" class="form-control filter-input" placeholder="Filter Sektor"></th>
+        <th></th>
+        <th></th>
+        <th></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for company in companies %}
+        <tr>
+          <td class="text-center">
+            <input type="checkbox"
+                  name="company_ids"
+                  class="toggle-company-active"
+                  data-company-id="{{ company.id }}"
+                  data-active="{{ company.active|yesno:'true,false' }}"
+                  {% if company.active %}checked{% endif %}>
+          </td>
+          <td>{{ company.name }}</td>
+          <td>{{ company.industry }}</td>
+          <td>{{ company.pdf_count }}</td>
+          <td id="last-scraped-{{ company.id }}">
+            {% if company.last_scraped %}
+              {{ company.last_scraped|localtime|date:"d.m.Y H:i" }}
+            {% else %}
+              –
+            {% endif %}
+          </td>
+          <td id="last-evaluated-{{ company.id }}">
+            {% if company.last_evaluated %}
+              {{ company.last_evaluated|localtime|date:"d.m.Y H:i" }}
+            {% else %}
+              –
+            {% endif %}
+          </td>
+          <td>
+            <a href="{% url 'company_detail' company.pk %}"
+              class="btn btn-sm btn-primary">
+              Profil
+            </a>
+
+            <a href="#"
+              class="btn btn-sm btn-outline-secondary edit-company-link"
+              data-bs-toggle="modal"
+              data-bs-target="#companyModal"
+              data-url="{% url 'company_edit' company.pk %}">
+              Bearbeiten
+            </a>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</form>
+
+<h3>Queries</h3>
+<!-- Neue Query Button + Modal -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <button type="button" class="btn btn-success"
+          data-bs-toggle="modal"
+          data-bs-target="#queryModal"
+          data-url="{% url 'query_create' %}">
+    Neue Query
+  </button>
+</div>
+
+<!-- Modal Wrapper für Query -->
+<div class="modal fade" id="queryModal" tabindex="-1" aria-labelledby="queryModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" id="queryModalContent">
+      <div class="modal-body p-4 text-center text-muted">
+        <div class="spinner-border" role="status"></div>
+        <p class="mt-3">Lade Formular …</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% include 'api/query_table.html' %}
+
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+
+  let pollingInterval = 5000
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        // Prüfen, ob dieses Cookie mit dem Namen beginnt
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+  
+    const scrapeBtn = document.getElementById('scrape-btn');
+    const reevaluateBtn = document.getElementById('reevaluate-btn');
+    let scrapePollingInterval = null;
+    let reevaluatePollingInterval = null;
+
+    function showLoading(button, text) {
+      button.disabled = true;
+      button.innerHTML = `
+        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+        ${text}
+      `;
+    }
+
+    function resetButton(button, originalText) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+
+    function checkScrapeStatus() {
+      fetch('/scrape/status/')
+        .then(response => response.json())
+        .then(data => {
+          if (data.scraping) {
+            showLoading(scrapeBtn, "Scraping läuft …");
+          } else {
+            resetButton(scrapeBtn, "Scrape");
+            clearInterval(scrapePollingInterval);
+          }
+        })
+        .catch(() => {
+          resetButton(scrapeBtn, "Scrape");
+          clearInterval(scrapePollingInterval);
+        });
+    }
+
+    function checkReevaluateStatus() {
+      fetch('/reevaluate/status/')
+        .then(response => response.json())
+        .then(data => {
+          if (data.running) {
+            showLoading(reevaluateBtn, "Bewertung läuft …");
+          } else {
+            resetButton(reevaluateBtn, "Reevaluate");
+            clearInterval(reevaluatePollingInterval);
+          }
+        })
+        .catch(() => {
+          resetButton(reevaluateBtn, "Reevaluate");
+          clearInterval(reevaluatePollingInterval);
+        });
+    }
+
+
+    // Scrape Button EventListener
+    scrapeBtn.addEventListener('click', () => {
+      showLoading(scrapeBtn, "Scraping läuft …");
+
+      fetch('/scrape/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === "already running") {
+          showLoading(scrapeBtn, "Scraping läuft …");
+          scrapePollingInterval = setInterval(checkScrapeStatus, 2000);
+          return;
+        }
+        if (data.status === 'started') {
+          // Update UI etc.
+          scrapePollingInterval = setInterval(checkScrapeStatus, 2000);
+        } else {
+          resetButton(scrapeBtn, "Scrape");
+        }
+      })
+      .catch(() => {
+        alert('Fehler beim Scraping');
+        resetButton(scrapeBtn, "Scrape");
+      });
+    });
+
+    // Reevaluate Button EventListener
+    reevaluateBtn.addEventListener('click', () => {
+      showLoading(reevaluateBtn, "Bewertung läuft …");
+
+      fetch('/reevaluate/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === "already running") {
+            showLoading(reevaluateBtn, "Bewertung läuft …");
+            reevaluatePollingInterval = setInterval(checkReevaluateStatus, 2000);
+            return;
+            
+          }
+          if (data.status === "started") {
+            reevaluatePollingInterval = setInterval(checkReevaluateStatus, 2000);
+          } else {
+            resetButton(reevaluateBtn, "Reevaluate");
+          }
+        })
+        .catch(() => {
+          alert('Fehler bei der Bewertung');
+          resetButton(reevaluateBtn, "Reevaluate");
+        });
+    });
+
+
+
+  // "Select all" Checkbox Funktion für Company Tabelle
+  const selectAll = document.getElementById('select_all_companies');
+  if (selectAll) {
+    selectAll.addEventListener('change', function() {
+      const checked = this.checked;
+      console.log("Select All Queries clicked:", checked); // Debug
+
+      document.querySelectorAll('.toggle-company-active').forEach(cb => {
+        cb.checked = checked;
+        cb.dispatchEvent(new Event('change'));
+      });
+    });
+  }
+
+// Select all Checkbox Funktion für Query Tabelle
+
+  const selectAllQueries = document.getElementById('select_all_queries');
+  if (selectAllQueries) {
+    selectAllQueries.addEventListener('change', function () {
+      const checked = this.checked;
+      document.querySelectorAll('.toggle-query-active').forEach(cb => {
+        cb.checked = checked;
+        cb.dispatchEvent(new Event('change'));
+      });
+    });
+  }
+
+    document.querySelectorAll('.toggle-company-active').forEach(function (checkbox) {
+      checkbox.addEventListener('change', function () {
+        const companyId = this.dataset.companyId;
+        const isActive = this.checked;
+
+        fetch("{% url 'toggle_company_active' %}", {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+          },
+          body: JSON.stringify({
+            company_id: companyId,
+            active: isActive
+          })
+        })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Fehler beim Aktualisieren des Status');
+          }
+        })
+        .catch(error => {
+          alert(error.message);
+          this.checked = !isActive; // Rückgängig machen bei Fehler
+        });
+      });
+    });
+
+
+  // Checkboxen Logik Query Tabelle
+    
+  document.querySelectorAll('.toggle-query-active').forEach(function (checkbox) {
+    checkbox.addEventListener('change', function () {
+      const queryId = this.dataset.queryId;
+      const isActive = this.checked;
+
+      fetch("{% url 'toggle_query_active' 0 %}".replace("0", queryId), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+          query_id: queryId,
+          active: isActive
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          alert("Aktualisierung fehlgeschlagen.");
+          checkbox.checked = !isActive;
+        }
+      })
+      .catch(() => {
+        alert("Fehler beim Aktualisieren.");
+        checkbox.checked = !isActive;
+      });
+    });
+  });
+
+
+  // Tabellen Filter für Company Tabelle
+document.querySelectorAll('.filter-input').forEach((input, index) => {
+    input.addEventListener('input', () => {
+      const table = document.getElementById('company-table');
+      const rows = table.querySelectorAll('tbody tr');
+      const filters = document.querySelectorAll('.filter-input');
+
+      rows.forEach(row => {
+        let show = true;
+        filters.forEach((filter, i) => {
+          const value = filter.value.trim().toLowerCase();
+          const cell = row.cells[i];
+          if (value && cell && !cell.textContent.toLowerCase().includes(value)) {
+            show = false;
+          }
+        });
+        row.style.display = show ? '' : 'none';
+      });
+    });
+  });
+  
+  // Tabellen Filter für Query Tabelle
+  const queryTable = document.getElementById('query-table');
+  const queryFilters = document.querySelectorAll('.query-filter');
+
+  queryFilters.forEach((input, index) => {
+    input.addEventListener('input', () => {
+      const rows = queryTable.querySelectorAll('tbody tr');
+
+      rows.forEach(row => {
+        let show = true;
+        queryFilters.forEach((filter, i) => {
+          const value = filter.value.trim().toLowerCase();
+          const cell = row.cells[i + 1]; // +1 wegen Checkbox-Spalte
+          if (value && cell && !cell.textContent.toLowerCase().includes(value)) {
+            show = false;
+          }
+        });
+        row.style.display = show ? '' : 'none';
+      });
+    });
+  });
+
+  // Modal Logic für Company
+    const modal = document.getElementById('companyModal');
+    modal.addEventListener('show.bs.modal', function (event) {
+      const trigger = event.relatedTarget;
+      const url = trigger.getAttribute('data-url');
+      const modalContent = document.getElementById('companyModalContent');
+
+      modalContent.innerHTML = `
+        <div class="modal-body text-center text-muted">
+          <div class="spinner-border" role="status"></div>
+          <p class="mt-3">Lade Formular …</p>
+        </div>`;
+
+      fetch(url)
+        .then(response => {
+          if (!response.ok) throw new Error("Fehler beim Laden");
+          return response.text();
+        })
+        .then(html => {
+          modalContent.innerHTML = html;
+          console.log("Formular HTML wurde geladen und eingefügt.");
+          // Hier erst initCompanyForm aufrufen, nachdem der HTML Inhalt eingefügt wurde
+          
+          initCompanyForm();
+          
+        })
+        .catch(error => {
+          modalContent.innerHTML = `<div class="modal-body text-danger">Fehler beim Laden: ${error.message}</div>`;
+        });
+    });
+
+
+
+  // Modal Logic für Query
+    const queryModal = document.getElementById('queryModal');
+
+    queryModal.addEventListener('show.bs.modal', function (event) {
+      const trigger = event.relatedTarget;
+      const url = trigger.getAttribute('data-url');
+      const modalContent = document.getElementById('queryModalContent');
+
+      modalContent.innerHTML = `
+        <div class="modal-body text-center text-muted">
+          <div class="spinner-border" role="status"></div>
+          <p class="mt-3">Lade Formular …</p>
+        </div>`;
+
+      fetch(url)
+        .then(response => {
+          if (!response.ok) throw new Error("Fehler beim Laden");
+          return response.text();
+        })
+        .then(html => {
+          modalContent.innerHTML = html;
+
+          // Skripte im geladenen HTML ausführen
+          const scripts = modalContent.querySelectorAll('script');
+          scripts.forEach(oldScript => {
+            const newScript = document.createElement('script');
+            if (oldScript.src) {
+              newScript.src = oldScript.src;
+            } else {
+              newScript.textContent = oldScript.textContent;
+            }
+            document.body.appendChild(newScript);
+            document.body.removeChild(newScript);
+          });
+
+          // Initialisierungsfunktion aufrufen
+          if (typeof initQueryForm === 'function') {
+            initQueryForm();
+          }
+        })
+        .catch(error => {
+          modalContent.innerHTML = `<div class="modal-body text-danger">Fehler beim Laden: ${error.message}</div>`;
+        });
+    });
+  });
+
+  
+</script>
+
+{% endblock %}

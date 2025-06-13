@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="de">
+{% load widget_tweaks %}
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}ESG Dashboard{% endblock %}</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
+
+</head>
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    ['scraped', 'manual'].forEach(function (prefix) {
+        const tableId = `#${prefix}-pdf-table`;
+        if (!$.fn.DataTable.isDataTable(tableId)) {
+            const table = $(tableId).DataTable({
+                paging: true,
+                order: [[2, 'desc']],
+            });
+
+            // Spalten-Filter verbinden
+            $(`${tableId} thead tr:eq(1) th`).each(function (i) {
+                $('input, select', this).on('keyup change', function () {
+                    table.column(i).search(this.value).draw();
+                });
+            });
+        }
+    });
+});
+
+  function initCompanyForm() {
+  const addBtn = document.getElementById('add-url');
+  const tableBody = document.getElementById('urlTableBody');
+  const totalForms = document.getElementById('id_urls-TOTAL_FORMS');
+  const template = document.getElementById('empty-form-template');
+  const form = document.getElementById('companyForm');
+
+  // Neue Zeile hinzufügen
+  addBtn?.addEventListener('click', function () {
+    const formIdx = parseInt(totalForms.value);
+    const clone = template.content.cloneNode(true);
+    const newRow = clone.querySelector('tr');
+
+    // Platzhalter __prefix__ durch aktuellen Index ersetzen
+    newRow.innerHTML = newRow.innerHTML.replace(/__prefix__/g, formIdx);
+
+    tableBody.appendChild(newRow);
+    totalForms.value = formIdx + 1;
+  });
+
+  // Zeile löschen (Button ✖)
+  tableBody?.addEventListener('click', function (e) {
+    if (e.target.classList.contains('remove-url')) {
+      const row = e.target.closest('tr');
+      const deleteField = row.querySelector('input[type="hidden"][name$="-DELETE"]');
+
+      if (deleteField) {
+        // Vorhandene Zeile: DELETE-Flag setzen und Zeile sofort ausblenden
+        deleteField.value = 'on';
+        row.style.display = 'none';
+      } else {
+        // Neu hinzugefügte Zeile: komplett entfernen und TOTAL_FORMS anpassen
+        row.remove();
+        totalForms.value = parseInt(totalForms.value) - 1;
+      }
+    }
+  });
+
+  // Formular per AJAX absenden
+  form.addEventListener('submit', function(event) {
+    event.preventDefault(); // Normales Submit verhindern
+
+    const url = form.action;
+    const formData = new FormData(form);
+
+    fetch(url, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        const modalEl = document.getElementById('companyModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        console.log('Speichern erfolgreich, Modal geschlossen.');
+      } else {
+        const modalContent = document.getElementById('companyModalContent');
+        modalContent.innerHTML = data.html;
+        initCompanyForm(); // Neu initialisieren
+      }
+    })
+    .catch(error => {
+      alert("Fehler beim Speichern: " + error);
+    });
+  });
+}
+
+</script>
+
+<body>
+
+<div class="container mt-4">
+    {% block content %}
+    <!-- Inhalt der einzelnen Seiten -->
+    {% endblock %}
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Eigene JS-Skripte -->
+{% block extra_js %}
+{% endblock %}
+
+</body>
+</html>

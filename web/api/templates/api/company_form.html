@@ -1,0 +1,76 @@
+{% load widget_tweaks %}
+
+<form id="companyForm" method="post" action="{{ form_action }}">
+  {% csrf_token %}
+
+  <div class="modal-header">
+    <h5 class="modal-title">
+      {% if instance %}Unternehmen bearbeiten{% else %}Neues Unternehmen{% endif %}
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  </div>
+
+  <div class="modal-body">
+    {% for field in form %}
+      <div class="mb-3">
+        <label class="form-label">{{ field.label }}</label>
+        {{ field|add_class:"form-control" }}
+        {% if field.errors %}
+          <div class="text-danger">{{ field.errors }}</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <h4>Unternehmens-URLs</h4>
+    {{ formset.management_form }}
+
+    <table class="table table-bordered" id="urlTable">
+      <thead>
+        <tr>
+          <th>URL</th>
+          <th>Aktiv?</th>
+          <th>Aktion</th>
+        </tr>
+      </thead>
+      <tbody id="urlTableBody">
+        {% for form in formset.forms %}
+          <tr class="url-form-row">
+            {{ form.id }}
+            <td>{{ form.url }}</td>
+            <td class="text-center">{{ form.active }}</td>
+            <td class="text-center">
+              {{ form.DELETE.as_hidden }}
+              <button type="button" class="btn btn-danger btn-sm remove-url">✖</button>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <button type="button" class="btn btn-outline-success" id="add-url">+ Neue URL</button>
+
+    <!-- Unsichtbare Vorlage für neue Zeilen -->
+    <template id="empty-form-template">
+      <tr class="url-form-row">
+        <td><input type="url" name="urls-__prefix__-url" class="form-control" id="id_urls-__prefix__-url"></td>
+        <td class="text-center">
+          <input type="checkbox" name="urls-__prefix__-active" class="form-check-input" id="id_urls-__prefix__-active">
+        </td>
+        <td class="text-center">
+          <input type="hidden" name="urls-__prefix__-DELETE" id="id_urls-__prefix__-DELETE">
+          <button type="button" class="btn btn-danger btn-sm remove-url">✖</button>
+        </td>
+      </tr>
+    </template>
+
+
+  </div>
+
+  <div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+    <button type="submit" class="btn btn-primary">Speichern</button>
+  </div>
+</form>
+
+
+

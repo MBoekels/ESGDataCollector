@@ -1,0 +1,20 @@
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>URL</th>
+            <th>Aktiv</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for url in urls %}
+            <tr>
+                <td>{{ url.url }}</td>
+                <td>
+                    <input type="checkbox" disabled {% if url.active %}checked{% endif %}>
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="2">Keine URLs vorhanden.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>

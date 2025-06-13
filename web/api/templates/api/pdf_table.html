@@ -1,0 +1,115 @@
+{% load pdf_extras %}
+
+<table id="{{ prefix }}-pdf-table" class="table table-striped">
+    <thead>
+        <tr>
+            <th>Dateiname</th>
+            <th>URL</th>
+            <th>Upload-Datum</th>
+            <th>Dateigröße (kB)</th>
+            <th>Für Analyse verwenden</th>
+        </tr>
+        <tr>
+            <th><input type="text" placeholder="Filtern..."></th>
+            <th><input type="text" placeholder="Filtern..."></th>
+            <th><input type="date"></th>
+            <th></th>
+            <th>
+                <select>
+                    <option value="">Alle</option>
+                    <option value="Ja">Ja</option>
+                    <option value="Nein">Nein</option>
+                </select>
+            </th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for pdf in pdfs %}
+            <tr>
+                <td><a href="{{ pdf.file.url }}" target="_blank">{{ pdf.file.name|basename }}</a></td>
+                <td><a href="{{ pdf.origin_url }}">{{ pdf.origin_url }}</a></td>
+                <td>{{ pdf.uploaded_at|date:"Y-m-d" }}</td>
+                <td>{{ pdf.file_size|default:"-" }}</td>
+                <td>
+                    <input type="checkbox" class="active-checkbox" data-pdf-id="{{ pdf.id }}"
+                        {% if pdf.active %}checked{% endif %}>
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- DataTables CSS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
+<!-- DataTables JS -->
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+
+<script>
+  $(document).ready(function() {
+      function initDataTable(id) {
+          const table = $(`#${id}`);
+          if (!$.fn.DataTable.isDataTable(table)) {
+              table.DataTable({
+                  paging: true,
+                  order: [[2, 'desc']],
+                  initComplete: function () {
+                      this.api().columns().every(function () {
+                          var that = this;
+                          $('input, select', this.header()).on('keyup change', function () {
+                              that.search(this.value).draw();
+                          });
+                      });
+                  }
+              });
+          }
+      }
+
+      initDataTable('scraped-pdf-table');
+      initDataTable('manual-pdf-table');
+  });
+
+  // CSRF Token aus Cookie holen (Standard-Django)
+  function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+          const cookies = document.cookie.split(';');
+          for (let i = 0; i < cookies.length; i++) {
+              const cookie = cookies[i].trim();
+              // Prüfen ob das Cookie name beginnt
+              if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                  cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                  break;
+              }
+          }
+      }
+      return cookieValue;
+  }
+
+  $(document).ready(function(){
+    $('.active-checkbox').change(function(){
+      const pdfId = $(this).data('pdf-id');
+      const isChecked = $(this).is(':checked');
+
+      $.ajax({
+        url: "{% url 'toggle_pdf_active' %}",
+        type: "POST",
+        data: {
+          'pdf_id': pdfId,
+          'active': isChecked,
+        },
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+        success: function(response){
+          if(response.success){
+            console.log("Status erfolgreich gespeichert.");
+          } else {
+            alert("Fehler beim Speichern: " + response.error);
+          }
+        },
+        error: function(){
+          alert("Fehler beim Speichern, bitte Seite neu laden und erneut probieren.");
+        }
+      });
+    });
+  });
+</script>
+
