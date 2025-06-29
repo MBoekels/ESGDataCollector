@@ -16,7 +16,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--domain', required=True, type=str, help='The domain to crawl for PDFs')
         parser.add_argument('--company_id', required=True, type=int, help='The ID of the company to associate with the PDFs')
-        parser.add_argument('--save_folder', default='media/pdfs/temp_scraped', type=str, help='Local folder to save CSV & PDFs')
+        parser.add_argument('--save_folder', default='media/pdfs', type=str, help='Local folder to save CSV & PDFs')
 
     def handle(self, *args, **options):
         domain = options['domain']
@@ -52,7 +52,6 @@ class Command(BaseCommand):
         for _, row in df.iterrows():
             local_path = row['file_path']          # statt pdf_url
             file_name  = row['file_name']
-            upload_date = row.get('upload_date') or None
 
             try:
                 # PDF direkt von Platte laden:
@@ -60,7 +59,7 @@ class Command(BaseCommand):
                     content = f.read()
 
                 sha256 = hashlib.sha256(content).hexdigest()
-                pdf = PDFFile.objects.filter(file_hash=sha256).first()
+                pdf = PDFFile.objects.filter(file_hash=sha256, source='webscraped').first()
 
                 if pdf:
                     PDFScrapeDate.objects.create(pdf_file=pdf)
@@ -72,7 +71,7 @@ class Command(BaseCommand):
                     new_pdf.file.save(file_name, ContentFile(content))
                     new_pdf.save()
                     PDFScrapeDate.objects.create(pdf_file=new_pdf)
-                    PDFOriginURL.objects.create(pdf_file=new_pdf, url=local_path)
+                    PDFOriginURL.objects.create(pdf_file=new_pdf, url=local_path) # TODO Local path auf url anpassen, pdf_files.csv muss angepasst werden
                     self.stdout.write(f"Neues PDF gespeichert: {file_name}")
 
             except Exception as e:

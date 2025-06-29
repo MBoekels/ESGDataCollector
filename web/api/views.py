@@ -1,8 +1,9 @@
-from api.models import CompanyProfile, Query, EvaluationResult, PDFFile
+from api.models import CompanyProfile, Query, EvaluationResult, PDFFile, PDFScrapeDate
 from .forms import CompanyProfileForm, CompanyURLFormSet, QueryForm
 
 import json
 
+import hashlib
 import threading
 import traceback
 
@@ -19,6 +20,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.core.cache import cache
 from django.core.management import call_command
+from django.core.files.base import ContentFile
+
+
 
 
 
@@ -97,9 +101,29 @@ class PDFUploadView(View):
     def post(self, request, pk):
         company = get_object_or_404(CompanyProfile, pk=pk)
         uploaded_file = request.FILES.get('pdf')
+
         if uploaded_file:
-            PDFFile.objects.create(company=company, file=uploaded_file, source='manual')
+            # Dateiinhalt lesen
+            content = uploaded_file.read()
+
+            # SHA-256 Hash berechnen
+            sha256 = hashlib.sha256(content).hexdigest()
+
+            # Nur manuelle Uploads prüfen
+            pdf = PDFFile.objects.filter(file_hash=sha256, source='manual').first()
+
+            if pdf:
+                PDFScrapeDate.objects.create(pdf_file=pdf)
+                self.stdout.write(f"Duplicate gefunden, Metadaten aktualisiert: {uploaded_file.name}")
+            else:
+                new_pdf = PDFFile(company=company, source='webscraped')
+                new_pdf.file.save(uploaded_file.name, ContentFile(content))
+                new_pdf.save()
+                PDFScrapeDate.objects.create(pdf_file=new_pdf)
+                self.stdout.write(f"Neues PDF gespeichert: {uploaded_file.name}")
+
         return redirect('company_detail', pk=pk)
+
 
 class CompanyCreateUpdateView(View):
     template_name = 'api/company_form.html'

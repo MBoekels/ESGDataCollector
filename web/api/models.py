@@ -48,6 +48,13 @@ class PDFFile(models.Model):
         if not self.file_size and self.file:
             self.file_size = self.file.size
         super().save(*args, **kwargs)
+    
+    def latest_scrape_date(self):
+        return self.scrape_dates.order_by('-scraped_at').first()
+
+    def latest_origin_url(self):
+        return self.origin_urls.order_by('-id').first()  # or use a timestamp if available
+
 
 
 class PDFScrapeDate(models.Model):
@@ -92,10 +99,3 @@ class EvaluationResult(models.Model):
     pdf_file = models.ForeignKey(PDFFile, on_delete=models.SET_NULL, null=True)
     result_data = models.JSONField()  # Django 3.1+ alternative to JSONField
     timestamp = models.DateTimeField(default=now)
-
-class ScrapedPDFCandidate(models.Model):
-    company = models.ForeignKey(CompanyProfile, on_delete=models.CASCADE, related_name='scraped_candidates')
-    title = models.CharField(max_length=255)
-    source_url = models.URLField()
-    proposed_at = models.DateTimeField(auto_now_add=True)
-    confirmed = models.BooleanField(null=True)  # None = undecided

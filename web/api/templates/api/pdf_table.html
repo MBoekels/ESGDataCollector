@@ -5,7 +5,7 @@
         <tr>
             <th>Dateiname</th>
             <th>URL</th>
-            <th>Upload-Datum</th>
+            <th>Gespeichert</th>
             <th>Dateigröße (kB)</th>
             <th>Für Analyse verwenden</th>
         </tr>
@@ -27,8 +27,8 @@
         {% for pdf in pdfs %}
             <tr>
                 <td><a href="{{ pdf.file.url }}" target="_blank">{{ pdf.file.name|basename }}</a></td>
-                <td><a href="{{ pdf.origin_url }}">{{ pdf.origin_url }}</a></td>
-                <td>{{ pdf.uploaded_at|date:"Y-m-d" }}</td>
+                <td><a href="{{ pdf.latest_origin_url.url }}">{{ pdf.latest_origin_url.url }}</a></td>
+                <td>{{ pdf.latest_scrape_date.scraped_at|date:"Y-m-d" }}</td>
                 <td>{{ pdf.file_size|default:"-" }}</td>
                 <td>
                     <input type="checkbox" class="active-checkbox" data-pdf-id="{{ pdf.id }}"
