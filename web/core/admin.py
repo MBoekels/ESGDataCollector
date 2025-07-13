@@ -1,5 +1,4 @@
 from django.contrib import admin
-from api.models import CompanyProfile, PDFFile
+from api.models import CompanyProfile
 
 admin.site.register(CompanyProfile)
-admin.site.register(PDFFile)

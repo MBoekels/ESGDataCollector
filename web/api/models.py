@@ -99,3 +99,10 @@ class EvaluationResult(models.Model):
     pdf_file = models.ForeignKey(PDFFile, on_delete=models.SET_NULL, null=True)
     result_data = models.JSONField()  # Django 3.1+ alternative to JSONField
     timestamp = models.DateTimeField(default=now)
+
+class PDFVector(models.Model):
+    pdf = models.OneToOneField('PDFFile', on_delete=models.CASCADE, related_name='vector')
+    vector = models.BinaryField()  # Store numpy array as bytes
+
+    def __str__(self):
+        return f"Vector for {self.pdf}"

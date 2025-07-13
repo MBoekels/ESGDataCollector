@@ -21,6 +21,12 @@ from django.template.loader import render_to_string
 from django.core.cache import cache
 from django.core.management import call_command
 from django.core.files.base import ContentFile
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import TokenAuthentication
+from .serializers import LLMQuerySerializer, LLMResultSerializer
+from backend.llm_module.evaluator import LLMEvaluator
 
 
 
@@ -29,6 +35,8 @@ from django.core.files.base import ContentFile
 
 SCRAPING_STATUS_KEY = "scraping_running"
 EVALUATION_STATUS_KEY = "evaluation_running"
+
+evaluator = LLMEvaluator(db_interface=None, llm_provider=None)  # TODO: inject real dependencies
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = "api/dashboard.html"
@@ -46,7 +54,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 
         companies = companies.annotate(
             pdf_count=Count("pdfs", distinct=True),
-            last_scrape=Max("scraped_candidates__proposed_at"),
             last_evaluated=Max("evaluationresult__timestamp"),
         )
 
@@ -114,13 +121,13 @@ class PDFUploadView(View):
 
             if pdf:
                 PDFScrapeDate.objects.create(pdf_file=pdf)
-                self.stdout.write(f"Duplicate gefunden, Metadaten aktualisiert: {uploaded_file.name}")
+                print(f"Duplicate gefunden, Metadaten aktualisiert: {uploaded_file.name}")
             else:
-                new_pdf = PDFFile(company=company, source='webscraped')
+                new_pdf = PDFFile(company=company, source='manual')
                 new_pdf.file.save(uploaded_file.name, ContentFile(content))
                 new_pdf.save()
                 PDFScrapeDate.objects.create(pdf_file=new_pdf)
-                self.stdout.write(f"Neues PDF gespeichert: {uploaded_file.name}")
+                print(f"Neues PDF gespeichert: {uploaded_file.name}")
 
         return redirect('company_detail', pk=pk)
 
@@ -320,6 +327,25 @@ class TriggerEvaluationView(View):
             "status": "started",
             "updated_companies": response_data
         })
+
+class LLMRunEvaluationView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = LLMQuerySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        # Run evaluation
+        result = evaluator.evaluate(
+            pdf_path=data['pdf_path'],
+            query=data['query'],
+            query_id=data['query_id'],
+            company_id=data['company_id'],
+            user=data.get('user')
+        )
+        result_serializer = LLMResultSerializer(result)
+        return Response(result_serializer.data)
 
 
 

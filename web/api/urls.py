@@ -16,4 +16,5 @@ urlpatterns = [
     path('queries/create/', QueryCreateUpdateView.as_view(), name='query_create'),
     path('queries/<int:pk>/edit/', QueryCreateUpdateView.as_view(), name='query_edit'),
     path('queries/<int:pk>/toggle-active/', toggle_query_active, name='toggle_query_active'),
+    path('llm-evaluate/', LLMRunEvaluationView.as_view(), name='llm_evaluate'),
 ]

@@ -51,7 +51,8 @@ INSTALLED_APPS = [
     'api', 
     'core',
     "widget_tweaks", 
-    'users'
+    'users',
+    'rest_framework.authtoken',
 ]
 
 MIDDLEWARE = [
@@ -144,3 +145,12 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 TIME_ZONE = "Europe/Berlin"
 USE_TZ = True
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
