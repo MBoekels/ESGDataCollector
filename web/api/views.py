@@ -1,5 +1,6 @@
 from api.models import CompanyProfile, Query, EvaluationResult, PDFFile, PDFScrapeDate
 from .forms import CompanyProfileForm, CompanyURLFormSet, QueryForm
+from ..backend.llm_module.llm_db_interface import LLMDBInterface
 
 import json
 
@@ -27,6 +28,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
 from .serializers import LLMQuerySerializer, LLMResultSerializer
 from backend.llm_module.evaluator import LLMEvaluator
+from backend.llm_module.llm_provider import HuggingFaceLLMProvider
+from ..backend.llm_module.llm_db_interface import LLMDBInterface
 
 
 
@@ -36,7 +39,6 @@ from backend.llm_module.evaluator import LLMEvaluator
 SCRAPING_STATUS_KEY = "scraping_running"
 EVALUATION_STATUS_KEY = "evaluation_running"
 
-evaluator = LLMEvaluator(db_interface=None, llm_provider=None)  # TODO: inject real dependencies
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = "api/dashboard.html"
@@ -332,20 +334,27 @@ class LLMRunEvaluationView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Initialize Evaluator with real dependencies
+        self.db_interface = LLMDBInterface()
+        self.llm_provider = HuggingFaceLLMProvider()  # Replace with your desired LLM
+        self.evaluator = LLMEvaluator(db_interface=self.db_interface, llm_provider=self.llm_provider)
     def post(self, request):
         serializer = LLMQuerySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         # Run evaluation
-        result = evaluator.evaluate(
+        result = self.evaluator.evaluate(
             pdf_path=data['pdf_path'],
-            query=data['query'],
+            query=data['query'], #TODO: the question itself
             query_id=data['query_id'],
             company_id=data['company_id'],
             user=data.get('user')
         )
         result_serializer = LLMResultSerializer(result)
         return Response(result_serializer.data)
+
 
 
 

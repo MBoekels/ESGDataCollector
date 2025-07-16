@@ -3,6 +3,8 @@ Handles vector storage for both PDF-level (Postgres) and chunk-level (FAISS) emb
 Should support similarity search and efficient retrieval.
 """
 
+import os
+import pickle
 from typing import List, Dict, Any
 import numpy as np
 
@@ -37,10 +39,17 @@ class ChunkVectorStore:
     """
     Stores and retrieves chunk-level embeddings using FAISS for fast similarity search.
     """
-    def __init__(self, dim: int):
+    def __init__(self, dim: int, index_path: str = None, meta_path: str = None):
         import faiss
-        self.index = faiss.IndexFlatL2(dim)
-        self.chunk_meta = []  # List of dicts with metadata for each chunk
+        self.dim = dim
+        self.index_path = index_path
+        self.meta_path = meta_path
+
+        if index_path and meta_path and os.path.exists(index_path) and os.path.exists(meta_path):
+            self.load_index(index_path, meta_path)
+        else:
+            self.index = faiss.IndexFlatL2(dim)
+            self.chunk_meta = []  # List of dicts with metadata for each chunk
 
     def add_chunk_vectors(self, vectors: np.ndarray, metas: List[Dict[str, Any]]):
         self.index.add(vectors)
@@ -49,3 +58,21 @@ class ChunkVectorStore:
     def search(self, query_vector: np.ndarray, top_k: int = 5) -> List[Dict[str, Any]]:
         D, I = self.index.search(query_vector.reshape(1, -1), top_k)
         return [self.chunk_meta[i] for i in I[0] if i < len(self.chunk_meta)]
+
+    def save_index(self, index_path: str, meta_path: str):
+        """Saves the FAISS index and metadata to disk."""
+        import faiss
+        faiss.write_index(self.index, index_path)
+        with open(meta_path, 'wb') as f:
+            pickle.dump(self.chunk_meta, f)
+        self.index_path = index_path
+        self.meta_path = meta_path
+
+    def load_index(self, index_path: str, meta_path: str):
+        """Loads the FAISS index and metadata from disk."""
+        import faiss
+        self.index = faiss.read_index(index_path)
+        with open(meta_path, 'rb') as f:
+            self.chunk_meta = pickle.load(f)
+        self.index_path = index_path
+        self.meta_path = meta_path

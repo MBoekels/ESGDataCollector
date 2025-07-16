@@ -2,23 +2,20 @@
 PDF parsing and chunking utilities.
 Should preserve layout and support paragraph-based chunking with overlap.
 """
-
 import pdfplumber
 from typing import List, Dict, Any
 
-from api.llm_provider import SentenceTransformersEmbeddingProvider
+from .llm_provider import SentenceTransformersEmbeddingProvider
 
 class PDFParser:
     """
     Parses PDF files, extracts text, and chunks by paragraph with overlap.
     Preserves layout information for source tracking.
-    Optionally supports embedding chunks using a sentence-transformers provider.
+    Optionally supports embedding chunks using an injected sentence-transformers provider.
     """
-    def __init__(self, overlap: int = 1, embedding_model: str = None, embedding_device: str = "cpu"):
+    def __init__(self, overlap: int = 1, embedding_provider: SentenceTransformersEmbeddingProvider = None):
         self.overlap = overlap
-        self.embedding_provider = None
-        if embedding_model:
-            self.embedding_provider = SentenceTransformersEmbeddingProvider(model_name=embedding_model, device=embedding_device)
+        self.embedding_provider = embedding_provider
 
     def parse_pdf(self, pdf_path: str) -> List[Dict[str, Any]]:
         """

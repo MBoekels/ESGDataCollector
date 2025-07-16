@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "widget_tweaks", 
     'users',
     'rest_framework.authtoken',
+    'django_celery_results',
 ]
 
 MIDDLEWARE = [
@@ -154,3 +155,11 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
 }
+
+# settings.py
+CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Or your RabbitMQ URL
+CELERY_RESULT_BACKEND = 'django-db'  # Or redis
+CELERY_ACCEPT_CONTENT = ['application/json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'

@@ -18,7 +18,7 @@ class CompanyProfile(models.Model):
 
 class CompanyURL(models.Model):
     company = models.ForeignKey(CompanyProfile, related_name='urls', on_delete=models.CASCADE)
-    url = models.URLField(validators=[URLValidator()])
+    url = models.URLField(validators=[URLValidator()],  max_length=2000)
     added_on = models.DateTimeField(auto_now_add=True)
     is_valid = models.BooleanField(default=True)
     active = models.BooleanField(default=True)
@@ -34,6 +34,8 @@ class PDFFile(models.Model):
     file_size = models.IntegerField(null=True, blank=True)
     source = models.CharField(max_length=20, choices=[('manual', 'Manual'), ('webscraped', 'Webscraped')])
     active = models.BooleanField(default=True)
+    chunk_vector_index_path = models.CharField(max_length=512, blank=True, null=True)
+    processing_status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('success', 'Success'), ('failed', 'Failed')], default='pending')
 
     def __str__(self):
         return f"{self.file.name} ({self.company.name})"
