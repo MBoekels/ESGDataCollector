@@ -1,3 +1,18 @@
+"""
+File: web/api/models.py
+
+Role:
+    This file defines the database schema for the application using the Django Object-Relational Mapper (ORM).
+    It includes models for `CompanyProfile`, `PDFFile`, `Query`, `EvaluationResult`, and `PDFVector`, which
+    are the core data structures for storing company information, uploaded documents, user queries, LLM
+    evaluation outputs, and document-level embeddings.
+
+Interactions:
+    - `web/api/views.py`: The views use these models to handle CRUD (Create, Read, Update, Delete) operations
+      triggered by API requests from the frontend.
+    - `web/backend/llm_module/llm_db_interface.py`: Uses `PDFFile` and `PDFVector` to manage PDF embeddings.
+    - `web/backend/llm_module/evaluator.py`: The results from this module are stored in the `EvaluationResult` model.
+"""
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import URLValidator
@@ -33,8 +48,10 @@ class PDFFile(models.Model):
     file_hash = models.CharField(max_length=64, unique=True)  # SHA-256 hash
     file_size = models.IntegerField(null=True, blank=True)
     source = models.CharField(max_length=20, choices=[('manual', 'Manual'), ('webscraped', 'Webscraped')])
+    report_year = models.IntegerField(null=True, blank=True)
     active = models.BooleanField(default=True)
     chunk_vector_index_path = models.CharField(max_length=512, blank=True, null=True)
+    document_vector_index_path = models.CharField(max_length=255, blank=True, null=True)
     processing_status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('success', 'Success'), ('failed', 'Failed')], default='pending')
 
     def __str__(self):
@@ -55,7 +72,7 @@ class PDFFile(models.Model):
         return self.scrape_dates.order_by('-scraped_at').first()
 
     def latest_origin_url(self):
-        return self.origin_urls.order_by('-id').first()  # or use a timestamp if available
+        return self.origin_urls.order_by('-id').first()
 
 
 
@@ -84,27 +101,29 @@ class Query(models.Model):
     def __str__(self):
         return self.name
 
-class QueryResult(models.Model):
-    query = models.ForeignKey(Query, on_delete=models.CASCADE, related_name='results')
-    company = models.ForeignKey(CompanyProfile, on_delete=models.CASCADE, related_name='query_results')
-    pdf = models.ForeignKey(PDFFile, on_delete=models.SET_NULL, null=True)
-    timestamp = models.DateTimeField(default=now)
-    data = models.JSONField()
-    position = models.CharField(max_length=255, blank=True)  # e.g., page number, section ID
-
-    def __str__(self):
-        return f"Result: {self.query.name} - {self.company.name}"
-
 class EvaluationResult(models.Model):
-    query = models.ForeignKey(Query, on_delete=models.CASCADE)
-    company = models.ForeignKey(CompanyProfile, on_delete=models.CASCADE)
-    pdf_file = models.ForeignKey(PDFFile, on_delete=models.SET_NULL, null=True)
-    result_data = models.JSONField()  # Django 3.1+ alternative to JSONField
+    """Stores a single RAG-based result for a query and a chunk from a PDF."""
+    query = models.ForeignKey("Query", on_delete=models.CASCADE, related_name='results')
+    company = models.ForeignKey("CompanyProfile", on_delete=models.CASCADE, related_name='results')
+    pdf_file = models.ForeignKey("PDFFile", on_delete=models.CASCADE, related_name='results', help_text="The source PDF for this result.")
+
     timestamp = models.DateTimeField(default=now)
 
-class PDFVector(models.Model):
-    pdf = models.OneToOneField('PDFFile', on_delete=models.CASCADE, related_name='vector')
-    vector = models.BinaryField()  # Store numpy array as bytes
+    # RAG fields
+    chunk_id = models.CharField(max_length=255)
+    chunk_type = models.CharField(max_length=50)
+    answer = models.TextField()
+    report_year = models.IntegerField(null=True, blank=True)
+    confidence = models.FloatField(null=True, blank=True)
+    cosine_similarity = models.FloatField(null=True, blank=True)
+
+    # Reference metadata
+    references = models.JSONField(help_text="Metadata from chunk used to produce this result.", default=dict)
+
+    # Meta / LLM info
+    model_version = models.CharField(max_length=255, blank=True, null=True)
+    processing_time = models.FloatField(blank=True, null=True)
 
     def __str__(self):
-        return f"Vector for {self.pdf}"
+        return f"Result for query {self.query_id} on PDF {self.pdf_file_id} (chunk {self.chunk_id})"
+

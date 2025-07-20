@@ -1,4 +1,5 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework import routers
 from .views import *
 
 urlpatterns = [
@@ -15,6 +16,12 @@ urlpatterns = [
     path('pdf/toggle-active/', toggle_pdf_active, name='toggle_pdf_active'),
     path('queries/create/', QueryCreateUpdateView.as_view(), name='query_create'),
     path('queries/<int:pk>/edit/', QueryCreateUpdateView.as_view(), name='query_edit'),
+
     path('queries/<int:pk>/toggle-active/', toggle_query_active, name='toggle_query_active'),
     path('llm-evaluate/', LLMRunEvaluationView.as_view(), name='llm_evaluate'),
 ]
+
+router = routers.DefaultRouter()
+router.register(r'pdffiles', PDFFileViewSet, basename='pdffile')
+router.register(r'evaluationresults', EvaluationResultViewSet, basename='evaluationresult')
+urlpatterns += router.urls

@@ -1,6 +1,5 @@
 from api.models import CompanyProfile, Query, EvaluationResult, PDFFile, PDFScrapeDate
 from .forms import CompanyProfileForm, CompanyURLFormSet, QueryForm
-from ..backend.llm_module.llm_db_interface import LLMDBInterface
 
 import json
 
@@ -20,18 +19,20 @@ from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.core.cache import cache
+from django.utils import timezone
 from django.core.management import call_command
 from django.core.files.base import ContentFile
+from rest_framework import viewsets
 from rest_framework.views import APIView
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
-from .serializers import LLMQuerySerializer, LLMResultSerializer
-from backend.llm_module.evaluator import LLMEvaluator
-from backend.llm_module.llm_provider import HuggingFaceLLMProvider
-from ..backend.llm_module.llm_db_interface import LLMDBInterface
-
-
+from .serializers import LLMQuerySerializer, LLMDataPointSerializer, PDFFileSerializer, EvaluationResultSerializer
+from .models import CompanyProfile, Query, EvaluationResult, PDFFile, PDFScrapeDate
+from backend.llm_module.llm_provider import HuggingFaceLLMProvider, SentenceTransformersEmbeddingProvider
+from backend.llm_module.processor import LLMProcessor
+from rest_framework import status
 
 
 
@@ -39,6 +40,17 @@ from ..backend.llm_module.llm_db_interface import LLMDBInterface
 SCRAPING_STATUS_KEY = "scraping_running"
 EVALUATION_STATUS_KEY = "evaluation_running"
 
+
+class PDFFileViewSet(viewsets.ModelViewSet):
+    queryset = PDFFile.objects.all()
+    serializer_class = PDFFileSerializer
+    permission_classes = [IsAuthenticated]  # Requires authentication
+    
+    @action(detail=True, methods=['get'])
+    def file_hash(self, request, pk=None):
+        """Retrieve the file_hash for a specific PDFFile instance."""
+        pdf_file = self.get_object()
+        return Response({'file_hash': pdf_file.file_hash}, status=status.HTTP_200_OK)
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = "api/dashboard.html"
@@ -330,35 +342,74 @@ class TriggerEvaluationView(View):
             "updated_companies": response_data
         })
 
+
 class LLMRunEvaluationView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Initialize Evaluator with real dependencies
-        self.db_interface = LLMDBInterface()
-        self.llm_provider = HuggingFaceLLMProvider()  # Replace with your desired LLM
-        self.evaluator = LLMEvaluator(db_interface=self.db_interface, llm_provider=self.llm_provider)
+        self.provider = HuggingFaceLLMProvider()
+        self.embedding_provider = SentenceTransformersEmbeddingProvider()
+        self.processor = LLMProcessor(provider=self.provider, embedding_provider=self.embedding_provider)
+
     def post(self, request):
         serializer = LLMQuerySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        # Run evaluation
-        result = self.evaluator.evaluate(
-            pdf_path=data['pdf_path'],
-            query=data['query'], #TODO: the question itself
-            query_id=data['query_id'],
-            company_id=data['company_id'],
-            user=data.get('user')
-        )
-        result_serializer = LLMResultSerializer(result)
-        return Response(result_serializer.data)
 
+        try:
+            # Run the RAG processor
+            result_data = self.processor.rag_analyze(
+                company_id=data['company_id'],
+                query_id=data['query_id'],
+                query_text=data['query'],
+                pdf_files=PDFFile.objects.filter(company_id=data['company_id'], active=True),
+                top_k=5,
+                filter_by_document_level_index=True,
+                extended_search=True
+            )
 
+            if not result_data:
+                return Response({'message': 'No relevant chunks found.'}, status=204)
 
+            # Fetch required objects
+            company = CompanyProfile.objects.get(pk=data['company_id'])
+            query = Query.objects.get(pk=data['query_id'])
 
+            saved_results = []
+            for chunk in result_data:
+                pdf_id = chunk.get("pdf_id")
+                try:
+                    pdf_file = PDFFile.objects.get(pk=pdf_id)
+                except PDFFile.DoesNotExist:
+                    continue  # Skip chunks referencing missing PDFs
 
+                evaluation_result = EvaluationResult(
+                    query=query,
+                    company=company,
+                    pdf_file=pdf_file,
+                    timestamp=timezone.now(),
+                    answer=chunk.get("answer"),
+                    report_year=chunk.get("report_year"),
+                    chunk_id=chunk.get("chunk_id"),
+                    chunk_type=chunk.get("chunk_type"),
+                    cosine_similarity=chunk.get("cosine_similarity"),
+                    confidence=chunk.get("confidence"),
+                    references=chunk.get("references"),
+                    model_version=chunk.get("provider")
+                )
+                evaluation_result.save()
+                saved_results.append(evaluation_result)
+
+            # Serialize the results
+            result_serializer = LLMDataPointSerializer(saved_results, many=True)
+            return Response(result_serializer.data)
+
+        except (CompanyProfile.DoesNotExist, Query.DoesNotExist) as e:
+            return Response({'error': f'Related object not found: {str(e)}'}, status=400)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
 
 
@@ -388,6 +439,12 @@ def toggle_query_active(request, pk):
         return JsonResponse({'success': True, 'active': query.active})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+class EvaluationResultViewSet(viewsets.ModelViewSet):
+    queryset = EvaluationResult.objects.all()
+    serializer_class = EvaluationResultSerializer
+    permission_classes = [IsAuthenticated]  # Requires authentication
 
 
 @csrf_exempt
